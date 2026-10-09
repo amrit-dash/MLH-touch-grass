@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "touchgrass"
+version = "0.1.0"
+description = "A git pre-push hook that won't let you push until a local open-weight model sees you've been outside."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+qr = ["qrcode>=7"]
+
+[project.scripts]
+touchgrass = "touchgrass.cli:main"
+
+[tool.setuptools]
+packages = ["touchgrass"]
+
+[tool.setuptools.package-data]
+touchgrass = ["page.html"]

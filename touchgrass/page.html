@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>touch grass</title>
+<style>
+  :root { --bg: #f4f7f1; --fg: #1d2a1a; --muted: #5b6b56; --accent: #2f7d32; --bad: #b3261e; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111710; --fg: #e3ecdf; --muted: #9aab94; --accent: #6fcf73; --bad: #ff8a80; --card: #1b2419; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; font: 17px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 420px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  label.button { display: block; text-align: center; padding: 18px; border-radius: 14px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  input[type=file] { display: none; }
+  img { width: 100%; border-radius: 14px; margin-top: 20px; display: none; }
+  #result { margin-top: 20px; padding: 16px; border-radius: 14px; background: var(--card); display: none; }
+  #result.pass strong { color: var(--accent); }
+  #result.fail strong { color: var(--bad); }
+  #result em { display: block; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🌱 touch grass</h1>
+  <p>Go outside. Take a photo with sky or plants in it. A model running on your laptop will check it. The photo never leaves your network.</p>
+  <label class="button" for="photo">Open camera</label>
+  <input id="photo" type="file" accept="image/*" capture="environment">
+  <img id="preview" alt="Your photo">
+  <div id="result" role="status"></div>
+</main>
+<script>
+const input = document.getElementById("photo");
+const preview = document.getElementById("preview");
+const result = document.getElementById("result");
+
+function show(cls, html) {
+  result.className = cls;
+  result.style.display = "block";
+  result.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function toJpeg(file, maxSide = 1024) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+input.addEventListener("change", async () => {
+  const file = input.files[0];
+  if (!file) return;
+  const dataUrl = await toJpeg(file);
+  preview.src = dataUrl;
+  preview.style.display = "block";
+  show("", "Asking the model… (this can take a little while on a laptop)");
+  try {
+    const response = await fetch("upload" + location.search, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({image: dataUrl, taken_at: file.lastModified}),
+    });
+    const v = await response.json();
+    if (v.error) { show("fail", "<strong>Error</strong><br>" + escapeHtml(v.error)); return; }
+    const head = v.passed ? "✅ " + escapeHtml(v.reason) + " Your push is unlocked." : "❌ " + escapeHtml(v.reason);
+    let html = "<strong>" + head + "</strong>";
+    if (v.description) html += "<br>" + escapeHtml(v.description);
+    if (v.roast) html += "<em>“" + escapeHtml(v.roast) + "”</em>";
+    show(v.passed ? "pass" : "fail", html);
+  } catch (e) {
+    show("fail", "<strong>Couldn't reach your laptop.</strong><br>Are you on the same Wi-Fi?");
+  }
+});
+</script>
+</body>
+</html>
