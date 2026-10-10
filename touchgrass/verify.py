@@ -84,30 +84,44 @@ def check_freshness(taken_at_ms: float | None, now_ms: float) -> str | None:
 
 
 def ask_model(jpeg: bytes, prompt: str = PROMPT, temperature: float = 0.2, timeout: float = 300) -> dict:
-    body = json.dumps(
-        {
-            "model": model_name(),
-            "prompt": prompt,
-            "images": [base64.b64encode(jpeg).decode()],
-            "format": "json",
-            "stream": False,
-            "options": {"temperature": temperature},
-        }
-    ).encode()
+    body = {
+        "model": model_name(),
+        "prompt": prompt,
+        "images": [base64.b64encode(jpeg).decode()],
+        "format": "json",
+        "think": False,
+        "stream": False,
+        "options": {"temperature": temperature},
+    }
+    try:
+        payload = _generate(body, timeout)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        if "structured output" not in detail:
+            raise ModelError(f"Ollama returned {exc.code}: {detail[:200]}") from exc
+        # Some Ollama builds (e.g. Homebrew's MLX runner) can't do format=json.
+        # The prompt already asks for JSON and parse_model_output digs it out.
+        del body["format"]
+        payload = _generate(body, timeout)
+    return parse_model_output(payload.get("response", ""))
+
+
+def _generate(body: dict, timeout: float) -> dict:
     request = urllib.request.Request(
         f"{ollama_host()}/api/generate",
-        data=body,
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read())
+            return json.loads(response.read())
+    except urllib.error.HTTPError:
+        raise
     except urllib.error.URLError as exc:
         raise ModelError(
             f"Couldn't reach Ollama at {ollama_host()} ({exc.reason}). "
             f"Is it running? Try `ollama pull {model_name()}`."
         ) from exc
-    return parse_model_output(payload.get("response", ""))
 
 
 def parse_model_output(text: str) -> dict:
