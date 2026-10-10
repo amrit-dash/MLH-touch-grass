@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import subprocess
@@ -193,6 +194,20 @@ class ServerTest(TempHome):
         receipt = state.receipts()[-1]
         self.assertEqual(receipt["roast"], "Wow, sunlight.")
         self.assertGreaterEqual(receipt["indoors_minutes"], 239)
+
+    def test_pass_recorded_even_if_phone_disconnects(self):
+        state.mark_grass(state.now() - timedelta(hours=4))
+        passed = []
+        handler = server.make_handler("tok", lambda *a: verify.Verdict(True, "ok"), passed.append)
+        h = handler.__new__(handler)
+        body = json.dumps({"image": "data:image/jpeg;base64,eA==", "taken_at": 1}).encode()
+        h.path = "/upload?t=tok"
+        h.headers = {"Content-Length": str(len(body))}
+        h.rfile = io.BytesIO(body)
+        with mock.patch.object(handler, "_json", side_effect=BrokenPipeError):
+            with self.assertRaises(BrokenPipeError):
+                h.do_POST()
+        self.assertEqual(len(passed), 1)
 
     def test_fail_keeps_blocked(self):
         state.mark_grass(state.now() - timedelta(hours=4))

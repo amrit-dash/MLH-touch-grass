@@ -32,7 +32,7 @@ Then **Gemma 4, running on your own laptop**, looks at it and decides if it coun
 
 [TODO: 30 to 60 second video. Blocked push, walk outside, photo, verdict on the phone, push goes through.]
 
-<!-- Screenshots from a real run against Gemma 4 e4b: docs/phone-1-start.png, docs/phone-2-cheat.png, docs/phone-3-pass.png -->
+<!-- Add 2 or 3 phone screenshots from YOUR run: the start screen (docs/phone-1-start.png), a rejected cheat, and a pass. -->
 
 Code: https://github.com/amrit-dash/MLH-touch-grass
 
@@ -53,7 +53,8 @@ It's about 500 lines of Python plus one HTML page, with zero required dependenci
 1. **The hook.** `touchgrass install` writes a `pre-push` hook. It compares now against the last time a photo passed.
 2. **The phone page.** `touchgrass prove` starts a small server on your Wi-Fi with a one-time token in the URL. The page opens the rear camera directly (`capture="environment"`), shrinks the photo to 1024px and sends it with its capture time.
 3. **The check.** The photo goes to Gemma through Ollama, on `localhost`. The prompt asks for JSON only: `outdoors`, `sky_or_plants`, `photo_of_screen`, a one line description and a roast.
-4. **The verdict.** Plain Python decides, not the model. Outdoors, plus sky or plants, plus not a screen. A pass resets the clock and saves a "grass receipt" (`touchgrass log`).
+4. **The verdict.** Plain Python decides, not the model. Outdoors, plus sky or plants, plus not a screen.
+5. **The double check.** Anything that passes gets one more question about screens (more on that below). Then the clock resets and you get a "grass receipt" (`touchgrass log`).
 
 I kept the decision in code on purpose. The model describes the photo, and 3 lines of `if` decide what that means. Easier to test, and the model can't be talked into saying "pass".
 
@@ -70,7 +71,13 @@ Obviously that was the first thing I tried.
 
 I also benchmarked it so I wasn't just trusting vibes. 18 labelled photos: 8 real outdoor scenes, 8 indoor rooms and desks, and 2 fakes where I pasted a field of cows onto a monitor in a desk photo.
 
-BENCH_RESULTS
+The first run got **16 out of 18**. Every real photo was right. Both fakes sailed through as "Grass confirmed", with the roast "Hope the grass is as green as your commit history!" (rude, and also wrong).
+
+So I changed 2 things. The prompt now makes the model look for a screen *before* it looks at the scene. And any photo that passes gets asked one more, much narrower question: what's at the edges of this photo, is it a bezel? Small models are bad at noticing a monitor frame when they're busy describing cows. They're good at it when that's the only question.
+
+Second run: **18 out of 18**, about 26 seconds a photo on a 4 core CPU with no GPU. Full results are in [docs/benchmark.md](https://github.com/amrit-dash/MLH-touch-grass/blob/main/docs/benchmark.md).
+
+(18 photos is tiny, and I fixed the prompt after seeing the fakes fail, so read that as "known holes closed", not "perfect". Also it calls the cows horses every single time.)
 
 [TODO: your own cheat attempts with the real verdicts. These are the best part of the post.]
 

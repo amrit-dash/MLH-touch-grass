@@ -76,10 +76,13 @@ def make_handler(token: str, verifier: Verifier, on_pass: Callable[[verify.Verdi
                 return self._json(502, {"error": str(exc)})
             except (KeyError, ValueError, TypeError):
                 return self._json(400, {"error": "Bad upload."})
-            self._json(200, verdict.as_dict())
-            # After responding, so the phone sees "unlocked" before we shut down.
-            if verdict.passed:
-                on_pass(verdict)
+            try:
+                self._json(200, verdict.as_dict())
+            finally:
+                # After responding, so the phone sees the result before we shut down,
+                # but even if the phone has gone away: you still went outside.
+                if verdict.passed:
+                    on_pass(verdict)
 
     return Handler
 
