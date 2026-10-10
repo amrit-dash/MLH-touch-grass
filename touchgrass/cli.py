@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from touchgrass import state, verify
 from touchgrass.server import serve
+from touchgrass.tunnel import TunnelError
 
 HOOK_MARKER = "# installed by touch-grass"
 
@@ -78,12 +80,29 @@ def _print_qr(url: str) -> None:
 def cmd_prove(args) -> int:
     def on_ready(url: str) -> None:
         _print_qr(url)
-        print(f"📱 On your phone (same Wi-Fi), open:\n   {url}")
+        where = "anywhere" if url.startswith("https://") else "same Wi-Fi"
+        print(f"📱 On your phone ({where}), open:\n   {url}")
         print(f"   Model: {verify.model_name()} via {verify.ollama_host()}")
         print("   Waiting for a photo of the outside world… (Ctrl+C to give up)")
 
+    def on_verdict(verdict) -> None:
+        if not verdict.passed:
+            print(f"\n❌ {verdict.reason} {verdict.description}".rstrip())
+            if verdict.roast:
+                print(f"   “{verdict.roast}”")
+
     try:
-        verdict = serve(on_ready, port=args.port, timeout_minutes=args.timeout)
+        verdict = serve(
+            on_ready,
+            port=args.port,
+            timeout_minutes=args.timeout,
+            tunnel=args.tunnel,
+            public_url=args.public_url,
+            on_verdict=on_verdict,
+        )
+    except TunnelError as exc:
+        print(f"Couldn't open the tunnel: {exc}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         print("\nStill indoors, then.")
         return 1
@@ -137,6 +156,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prove", help="serve the phone page and wait for an outdoor photo")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--timeout", type=int, default=30, help="minutes to wait")
+    where = p.add_mutually_exclusive_group()
+    where.add_argument(
+        "--tunnel", action="store_true", default=os.environ.get("TOUCHGRASS_TUNNEL") == "1",
+        help="serve over an HTTPS Cloudflare quick tunnel so your phone works off your Wi-Fi",
+    )
+    where.add_argument(
+        "--public-url", default=os.environ.get("TOUCHGRASS_PUBLIC_URL"),
+        help="your own HTTPS address that forwards to --port (ngrok, Tailscale Funnel, a proxy)",
+    )
     p.set_defaults(func=cmd_prove)
 
     p = sub.add_parser("status", help="how long you've been indoors")

@@ -6,12 +6,13 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
-from touchgrass import cli, server, state, verify
+from touchgrass import cli, server, state, tunnel, verify
 
 
 class TempHome(unittest.TestCase):
@@ -89,6 +90,40 @@ class PipelineTest(unittest.TestCase):
         ask.assert_not_called()
 
 
+class AskModelTest(unittest.TestCase):
+    def _http_error(self, code, body):
+        return urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(body))
+
+    def _ok(self, text):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({"response": text}).encode()
+        return response
+
+    def test_retries_without_format_when_structured_output_unavailable(self):
+        bodies = []
+        replies = [self._http_error(501, b'{"error":"structured output is unavailable"}'),
+                   self._ok('```json\n{"outdoors": true}\n```')]
+
+        def fake_urlopen(request, timeout):
+            bodies.append(json.loads(request.data))
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        with mock.patch.object(urllib.request, "urlopen", side_effect=fake_urlopen):
+            self.assertEqual(verify.ask_model(b"x"), {"outdoors": True})
+        self.assertEqual(bodies[0]["format"], "json")
+        self.assertNotIn("format", bodies[1])
+        self.assertFalse(bodies[1]["think"])
+
+    def test_other_http_errors_are_reported_not_called_unreachable(self):
+        error = self._http_error(404, b'{"error":"model not found"}')
+        with mock.patch.object(urllib.request, "urlopen", side_effect=error):
+            with self.assertRaisesRegex(verify.ModelError, "404.*model not found"):
+                verify.ask_model(b"x")
+
+
 class CheckTest(TempHome):
     def test_first_run_does_not_block(self):
         self.assertEqual(cli.main(["check"]), 0)
@@ -148,7 +183,7 @@ class InstallTest(TempHome):
 
 
 class ServerTest(TempHome):
-    def _run(self, verdict):
+    def _run(self, verdict, **serve_kwargs):
         ready = threading.Event()
         urls = []
         result = []
@@ -163,7 +198,7 @@ class ServerTest(TempHome):
 
         t = threading.Thread(
             target=lambda: result.append(
-                server.serve(on_ready, port=0, verifier=fake_verifier, timeout_minutes=0.02)
+                server.serve(on_ready, port=0, verifier=fake_verifier, timeout_minutes=0.02, **serve_kwargs)
             )
         )
         t.start()
@@ -211,11 +246,69 @@ class ServerTest(TempHome):
 
     def test_fail_keeps_blocked(self):
         state.mark_grass(state.now() - timedelta(hours=4))
-        response, verdict = self._run(verify.Verdict(False, "That's a picture of a screen."))
+        seen = []
+        response, verdict = self._run(verify.Verdict(False, "That's a picture of a screen."), on_verdict=seen.append)
         self.assertFalse(response["passed"])
+        self.assertEqual([v.reason for v in seen], ["That's a picture of a screen."])
         self.assertIsNone(verdict)
         self.assertGreater(state.minutes_indoors(), 200)
         self.assertEqual(state.receipts(), [])
+
+
+class PublicUrlTest(TempHome):
+    def test_public_url_listens_on_localhost_only_with_long_token(self):
+        bound = []
+        real = server.ThreadingHTTPServer
+
+        def spy(address, handler):
+            bound.append(address)
+            return real(("127.0.0.1", 0), handler)
+
+        urls = []
+        with mock.patch.object(server, "ThreadingHTTPServer", side_effect=spy):
+            server.serve(urls.append, port=0, timeout_minutes=0, public_url="https://grass.example.com/")
+        self.assertEqual(bound[0][0], "127.0.0.1")
+        self.assertTrue(urls[0].startswith("https://grass.example.com/?t="))
+        self.assertGreaterEqual(len(urls[0].split("?t=")[1]), 20)
+
+
+class TunnelTest(unittest.TestCase):
+    def test_finds_quick_tunnel_url_in_cloudflared_log(self):
+        line = "2026-10-10T12:00:00Z INF |  https://calm-grass-tree.trycloudflare.com  |"
+        self.assertEqual(tunnel.find_url(line), "https://calm-grass-tree.trycloudflare.com")
+        self.assertIsNone(tunnel.find_url("INF Requesting new quick Tunnel on trycloudflare.com..."))
+
+    def test_missing_cloudflared_says_how_to_install(self):
+        with self.assertRaisesRegex(tunnel.TunnelError, "brew install cloudflared"):
+            tunnel.Tunnel(8765, binary="definitely-not-cloudflared").open()
+
+    def _fake_cloudflared(self, script):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "cloudflared"
+        path.write_text("#!/bin/sh\n" + script)
+        path.chmod(0o755)
+        return str(path)
+
+    def test_reads_url_from_a_running_process_and_stops_it(self):
+        fake = self._fake_cloudflared(
+            'echo "INF starting" >&2\necho "INF |  https://abc-def.trycloudflare.com  |" >&2\nsleep 30\n'
+        )
+        t = tunnel.Tunnel(8765, binary=fake)
+        self.assertEqual(t.open(timeout=5), "https://abc-def.trycloudflare.com")
+        t.close()
+        self.assertIsNotNone(t.process.poll())
+
+    def test_process_that_exits_without_url_is_an_error(self):
+        fake = self._fake_cloudflared('echo "ERR failed to request quick Tunnel" >&2\nexit 1\n')
+        with self.assertRaisesRegex(tunnel.TunnelError, "failed to request quick Tunnel"):
+            tunnel.Tunnel(8765, binary=fake).open(timeout=5)
+
+    def test_cli_reports_tunnel_errors_instead_of_crashing(self):
+        with mock.patch.object(cli, "serve", side_effect=tunnel.TunnelError("nope")):
+            with mock.patch("sys.stderr", new=io.StringIO()) as err:
+                self.assertEqual(cli.main(["prove", "--tunnel"]), 1)
+        self.assertIn("nope", err.getvalue())
 
 
 if __name__ == "__main__":

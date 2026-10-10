@@ -1,4 +1,4 @@
-"""A tiny LAN server your phone uploads the proof photo to."""
+"""A tiny server your phone uploads the proof photo to: on your Wi-Fi, or behind an HTTPS tunnel."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
 from touchgrass import state, verify
+from touchgrass.tunnel import Tunnel
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -35,7 +36,12 @@ def decode_data_url(data_url: str) -> bytes:
     return base64.b64decode(encoded or data_url)
 
 
-def make_handler(token: str, verifier: Verifier, on_pass: Callable[[verify.Verdict], None]):
+def make_handler(
+    token: str,
+    verifier: Verifier,
+    on_pass: Callable[[verify.Verdict], None],
+    on_verdict: Callable[[verify.Verdict], None] | None = None,
+):
     page = resources.files("touchgrass").joinpath("page.html").read_bytes()
 
     class Handler(BaseHTTPRequestHandler):
@@ -76,6 +82,8 @@ def make_handler(token: str, verifier: Verifier, on_pass: Callable[[verify.Verdi
                 return self._json(502, {"error": str(exc)})
             except (KeyError, ValueError, TypeError):
                 return self._json(400, {"error": "Bad upload."})
+            if on_verdict:
+                on_verdict(verdict)
             try:
                 self._json(200, verdict.as_dict())
             finally:
@@ -104,9 +112,19 @@ def serve(
     port: int = 8765,
     verifier: Verifier = verify.verify,
     timeout_minutes: int = 30,
+    tunnel: bool = False,
+    public_url: str | None = None,
+    on_verdict: Callable[[verify.Verdict], None] | None = None,
 ) -> verify.Verdict | None:
-    """Serve until a photo passes or we time out. Returns the passing verdict or None."""
-    token = secrets.token_urlsafe(8)
+    """Serve until a photo passes or we time out. Returns the passing verdict or None.
+
+    By default the page is on your LAN. With `tunnel`, a Cloudflare quick tunnel gives
+    it an HTTPS address that works from anywhere. With `public_url`, you bring your own
+    (ngrok, Tailscale Funnel, a reverse proxy) pointed at this port. Either way the server
+    only listens on localhost, and the token is longer because the URL is public.
+    """
+    public = tunnel or public_url is not None
+    token = secrets.token_urlsafe(16 if public else 8)
     passed: list[verify.Verdict] = []
     done = threading.Event()
     indoors = state.minutes_indoors()
@@ -117,12 +135,24 @@ def serve(
             passed.append(verdict)
         done.set()
 
-    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(token, verifier, on_pass))
+    host = "127.0.0.1" if public else "0.0.0.0"
+    server = ThreadingHTTPServer((host, port), make_handler(token, verifier, on_pass, on_verdict))
+    port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    cloudflare = Tunnel(port) if tunnel else None
     try:
-        on_ready(f"http://{lan_ip()}:{server.server_address[1]}/?t={token}")
+        if cloudflare:
+            base = cloudflare.open()
+            cloudflare.wait_until_reachable(f"/?t={token}")
+        elif public_url:
+            base = public_url.rstrip("/")
+        else:
+            base = f"http://{lan_ip()}:{port}"
+        on_ready(f"{base}/?t={token}")
         done.wait(timeout_minutes * 60)
     finally:
+        if cloudflare:
+            cloudflare.close()
         server.shutdown()
         server.server_close()
     return passed[0] if passed else None
