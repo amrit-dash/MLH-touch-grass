@@ -12,14 +12,14 @@ DRAFT of the DEV post. Paste into the official submission template on the challe
 
 ## What I Built
 
-[TODO: one or two lines, true to you. Something like: "I checked my screen time on Friday. It was 11h 40m. I'd been outside for the walk from the car to the office."]
+For the past couple of weeks I've been losing track of time. I'd look up, see 1 o'clock, and honestly not know if it was the afternoon or the middle of the night.
 
-So I built **touch-grass**. It's a git pre-push hook. After 3 hours, this happens:
+I was so deep in a project that I'd stopped taking breaks. That's what made me build **touch-grass**. It's a git pre-push hook. After 3 hours indoors (you can change that), this happens. Here's a real one from testing, with the limit set to 1 minute:
 
 ```
 $ git push
 
-🌱 touch-grass: 3h 12m since you last saw the sky. Push blocked.
+🌱 touch-grass: 9m since you last saw the sky. Push blocked.
    Run `touchgrass prove`, scan the code with your phone and take a photo outside.
    (Yes, `git push --no-verify` works. You'll know.)
 ```
@@ -30,9 +30,21 @@ Then **Gemma 4, running on your own laptop**, looks at it and decides if it coun
 
 ## Demo
 
-[TODO: 30 to 60 second video. Blocked push, walk outside, photo, verdict on the phone, push goes through.]
+I didn't record a video, so here's a real `prove` run from testing instead. I ran it over the tunnel, scanned the code and walked outside:
 
-<!-- Add 2 or 3 phone screenshots from YOUR run: the start screen (docs/phone-1-start.png), a rejected cheat, and a pass. -->
+```
+$ touchgrass prove --tunnel
+📱 On your phone (anywhere), open:
+   https://….trycloudflare.com/?t=…
+   Model: gemma4:e4b via http://localhost:11434
+   Waiting for a photo of the outside world… (Ctrl+C to give up)
+
+✅ Grass confirmed. A hilly landscape with scattered houses under a cloudy sky.
+   "It looks like you've found a much better environment to debug than your IDE."
+   Push unlocked.
+```
+
+<!-- ADD 2 or 3 of your phone screenshots here: the laundry pass, the monitor that fooled it, the hillside pass. -->
 
 Code: https://github.com/amrit-dash/MLH-touch-grass
 
@@ -44,7 +56,7 @@ This one sits on the command I run 20 times a day. I can't swipe it away. The on
 
 And it's tiny. You don't need a hike. You need sky or a plant in frame, taken in the last 15 minutes. That's a 2 minute walk, which is exactly the break I wasn't taking.
 
-[TODO: what actually happened the first time it blocked you mid-task]
+I built it, set it up, and promptly forgot about it. Then a push got blocked, and when I looked up from the screen the sun was setting outside.
 
 ## How I Built It
 
@@ -104,12 +116,7 @@ I retook the full-frame shot, saved it and tried 4 different screen prompts on i
 
 So that's the known hole. If you're willing to press your phone against your monitor to dodge a 2 minute walk, you win. You'll know, though.
 
-The last one went through the new HTTPS tunnel, of an actual hillside:
-
-> ✅ Grass confirmed. A hilly landscape with scattered houses under a cloudy sky.
-> "It looks like you've found a much better environment to debug than your IDE."
-
-Push unlocked.
+And the hillside in the demo above went through the new HTTPS tunnel, first try.
 
 ## Why Open Matters Here
 
@@ -127,5 +134,3 @@ I don't want that going to someone else's API every time I push code. With an op
 ## Prize Categories
 
 - Best Use of Gemma
-
-<!-- Team: list DEV usernames if applicable -->
