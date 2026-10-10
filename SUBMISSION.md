@@ -14,7 +14,9 @@ DRAFT of the DEV post. Paste into the official submission template on the challe
 
 For the past couple of weeks I've been losing track of time. I'd look up, see 1 o'clock, and honestly not know if it was the afternoon or the middle of the night.
 
-I was so deep in a project that I'd stopped taking breaks. That's what made me build **touch-grass**. It's a git pre-push hook. After 3 hours indoors (you can change that), this happens. Here's a real one from testing, with the limit set to 1 minute:
+I was so deep in a project that I'd stopped taking breaks. That's what made me build **touch-grass**.
+
+It's a git pre-push hook. After 3 hours indoors (you can change that), this happens. Here's a real one from testing, with the limit set to 1 minute:
 
 ```
 $ git push
