@@ -16,7 +16,7 @@ Built for the [Hacktoberfest 2026 DEV Open-Source AI Challenge, Week 1: Touch Gr
 
 ```sh
 # 1. A local vision model
-ollama pull gemma3:4b
+ollama pull gemma4:e4b   # or gemma4:e2b on a smaller laptop
 
 # 2. touch-grass
 pip install "touchgrass[qr] @ git+https://github.com/amrit-dash/MLH-touch-grass"
@@ -40,7 +40,7 @@ touchgrass install
 | Env var | Default | |
 |---|---|---|
 | `TOUCHGRASS_MAX_MINUTES` | `180` | Minutes indoors before pushes lock |
-| `TOUCHGRASS_MODEL` | `gemma3:4b` | Any Ollama vision model |
+| `TOUCHGRASS_MODEL` | `gemma4:e4b` | Any Ollama vision model (`gemma4:e2b` is lighter) |
 | `OLLAMA_HOST` | `http://localhost:11434` | |
 | `TOUCHGRASS_HOME` | `~/.touchgrass` | State and receipts |
 

@@ -1,62 +1,90 @@
 <!--
-DRAFT of the DEV post. Writing quality is the most heavily weighted judging criterion.
-Before publishing:
-  - Start from the official submission template on the challenge page (it adds #devchallenge #hf26challenge).
-  - Replace every [TODO] with real output from your own runs. Do not invent verdicts or roasts.
-  - Add the demo video/GIF.
-  - Rewrite in your own voice.
+DRAFT of the DEV post. Paste into the official submission template on the challenge page
+(it adds #devchallenge #hf26challenge), then:
+  - Replace every [TODO] with your own runs. Don't invent verdicts or roasts.
+  - Add the demo video and the screenshots in docs/.
+  - Read it out loud once. If a line doesn't sound like you, change it.
 -->
 
-# My `git push` won't work until I touch grass
+# I made `git push` refuse to work until I touch grass
 
-*This is a submission for the [Hacktoberfest Open-Source AI Challenge: Week 1 — Touch Grass](https://dev.to/challenges/hacktoberfest-week1-2026-10-05).*
+*This is a submission for the [Hacktoberfest Open-Source AI Challenge: Week 1, Touch Grass](https://dev.to/challenges/hacktoberfest-week1-2026-10-05).*
 
 ## What I Built
 
-[TODO: one paragraph, first person. Suggested angle: you noticed you'd pushed 14 times today without standing up.]
+[TODO: one or two lines, true to you. Something like: "I checked my screen time on Friday. It was 11h 40m. I'd been outside for the walk from the car to the office."]
 
-**touch-grass** is a git pre-push hook. After three hours indoors, `git push` refuses:
+So I built **touch-grass**. It's a git pre-push hook. After 3 hours, this happens:
 
 ```
+$ git push
+
 🌱 touch-grass: 3h 12m since you last saw the sky. Push blocked.
+   Run `touchgrass prove`, scan the code with your phone and take a photo outside.
+   (Yes, `git push --no-verify` works. You'll know.)
 ```
 
-To unlock it, run `touchgrass prove`, scan the QR code, walk outside and take a photo. An open-weight vision model running on my own laptop decides whether I actually went outside.
+To get your push back, you run `touchgrass prove`. It prints a QR code. You scan it, your phone opens the camera, and you go outside and take a photo.
+
+Then **Gemma 4, running on your own laptop**, looks at it and decides if it counts.
 
 ## Demo
 
-[TODO: 30–60s video: blocked push → walk outside → photo → verdict on phone → push succeeds]
+[TODO: 30 to 60 second video. Blocked push, walk outside, photo, verdict on the phone, push goes through.]
 
-Repo: https://github.com/amrit-dash/MLH-touch-grass
+<!-- Screenshots from a real run against Gemma 4 e4b: docs/phone-1-start.png, docs/phone-2-cheat.png, docs/phone-3-pass.png -->
+
+Code: https://github.com/amrit-dash/MLH-touch-grass
 
 ## How It Gets People Outside
 
-Most "go outside" apps suggest. This one gates. It sits on the one command a developer runs constantly and makes it conditional on daylight.
+Every "go outside" app I've tried sends a notification. I swipe it away in under a second.
 
-[TODO: what it actually felt like the first time it blocked you mid-task]
+This one sits on the command I run 20 times a day. I can't swipe it away. The only way past it (well, the honest way) is the front door.
+
+And it's tiny. You don't need a hike. You need sky or a plant in frame, taken in the last 15 minutes. That's a 2 minute walk, which is exactly the break I wasn't taking.
+
+[TODO: what actually happened the first time it blocked you mid-task]
 
 ## How I Built It
 
-- **Hook**: `touchgrass install` writes a `pre-push` hook. It compares now against your last verified outing.
-- **Phone page**: `touchgrass prove` starts a tiny server on your LAN with a one-time token. The page opens the camera directly, downsizes the photo and sends it with its capture time.
-- **Verification**: Gemma, via Ollama, gets the photo and returns JSON: `outdoors`, `sky_or_plants`, `photo_of_screen`, a description and a roast.
-- **Receipt**: a pass resets the clock and saves a "grass receipt".
+It's about 500 lines of Python plus one HTML page, with zero required dependencies.
 
-### The anti-cheat arms race
+1. **The hook.** `touchgrass install` writes a `pre-push` hook. It compares now against the last time a photo passed.
+2. **The phone page.** `touchgrass prove` starts a small server on your Wi-Fi with a one-time token in the URL. The page opens the rear camera directly (`capture="environment"`), shrinks the photo to 1024px and sends it with its capture time.
+3. **The check.** The photo goes to Gemma through Ollama, on `localhost`. The prompt asks for JSON only: `outdoors`, `sky_or_plants`, `photo_of_screen`, a one line description and a roast.
+4. **The verdict.** Plain Python decides, not the model. Outdoors, plus sky or plants, plus not a screen. A pass resets the clock and saves a "grass receipt" (`touchgrass log`).
 
-[TODO: the funny section. Try each of these for real and paste the actual verdicts:]
-- [TODO: a photo of grass on your monitor]
-- [TODO: a photo out the window]
-- [TODO: an old photo from the gallery → rejected by the freshness check]
-- [TODO: the real thing]
+I kept the decision in code on purpose. The model describes the photo, and 3 lines of `if` decide what that means. Easier to test, and the model can't be talked into saying "pass".
 
-## Why Open Innovation Matters Here
+### Can you cheat it?
 
-This tool looks at photos of where you are. That's not something I want to send to someone else's API. Running Gemma locally means the photo, your location in it and your habits stay on your machine. It also means it's free to run as often as you push, and anyone can swap the model or change the rules.
+Obviously that was the first thing I tried.
 
-## Limits
+| Cheat | What stops it |
+|---|---|
+| Old photo from the gallery | Capture time has to be within 15 minutes |
+| Photo out the window | Prompt says "not through a window" [TODO: test this for real] |
+| Grass wallpaper on your monitor | `photo_of_screen` |
+| `git push --no-verify` | Nothing. You'll know. |
 
-`git push --no-verify` exists. The capture time can be spoofed. It's a nudge with jokes, not a prison.
+I also benchmarked it so I wasn't just trusting vibes. 18 labelled photos: 8 real outdoor scenes, 8 indoor rooms and desks, and 2 fakes where I pasted a field of cows onto a monitor in a desk photo.
+
+BENCH_RESULTS
+
+[TODO: your own cheat attempts with the real verdicts. These are the best part of the post.]
+
+## Why Open Matters Here
+
+This thing looks at photos of where you are. Your street, your backyard, maybe your face.
+
+I don't want that going to someone else's API every time I push code. With an open-weight model it never leaves my laptop. It also costs nothing per check, works offline, and if you think my rules are too strict you can change the prompt or swap the model in one env var.
+
+## What's Missing
+
+- `--no-verify` skips it. It's a nudge with jokes, not a prison.
+- The capture time comes from the phone's browser, so a determined cheater can fake it.
+- Your phone and laptop need to be on the same Wi-Fi.
 
 ## Prize Categories
 

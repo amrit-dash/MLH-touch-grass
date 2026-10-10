@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-DEFAULT_MODEL = "gemma3:4b"
+DEFAULT_MODEL = "gemma4:e4b"
 DEFAULT_HOST = "http://localhost:11434"
 MAX_PHOTO_AGE_SECONDS = 15 * 60
 
