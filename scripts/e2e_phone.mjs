@@ -22,9 +22,10 @@ await page.screenshot({ path: `${outDir}/phone-1-start.png` });
 
 for (const [photo, name] of [[failPhoto, "phone-2-cheat"], [passPhoto, "phone-3-pass"]]) {
   const now = new Date(); utimesSync(photo, now, now);  // a fresh capture
-  const resp = page.waitForResponse(r => r.url().includes("/upload"), { timeout: 900000 });
+  const done = page.waitForResponse(
+    async r => r.url().includes("/result") && !(await r.json()).pending, { timeout: 900000 });
   await page.setInputFiles("#photo", photo);
-  console.log(name, JSON.stringify(await (await resp).json()));
+  console.log(name, JSON.stringify(await (await done).json()));
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${outDir}/${name}.png`, fullPage: true });
 }

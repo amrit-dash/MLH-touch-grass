@@ -57,6 +57,31 @@ async function toJpeg(file, maxSide = 1024) {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Upload, then poll. One long request gets cut by tunnels and sleepy phones.
+async function judge(dataUrl, takenAt) {
+  const response = await fetch("upload" + location.search, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({image: dataUrl, taken_at: takenAt}),
+  });
+  const started = await response.json();
+  if (!started.job) return started;
+  const resultUrl = "result" + location.search + "&job=" + encodeURIComponent(started.job);
+  let misses = 0;
+  for (;;) {
+    await sleep(2000);
+    try {
+      const v = await (await fetch(resultUrl, {cache: "no-store"})).json();
+      misses = 0;
+      if (!v.pending) return v;
+    } catch (e) {
+      if (++misses >= 5) throw e;  // a blip on mobile data is fine, 10s of nothing isn't
+    }
+  }
+}
+
 input.addEventListener("change", async () => {
   const file = input.files[0];
   if (!file) return;
@@ -65,12 +90,7 @@ input.addEventListener("change", async () => {
   preview.style.display = "block";
   show("", "Asking the model… (this can take a little while on a laptop)");
   try {
-    const response = await fetch("upload" + location.search, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({image: dataUrl, taken_at: file.lastModified}),
-    });
-    const v = await response.json();
+    const v = await judge(dataUrl, file.lastModified);
     if (v.error) { show("fail", "<strong>Error</strong><br>" + escapeHtml(v.error)); return; }
     const head = v.passed ? "✅ " + escapeHtml(v.reason) + " Your push is unlocked." : "❌ " + escapeHtml(v.reason);
     let html = "<strong>" + head + "</strong>";
@@ -78,7 +98,10 @@ input.addEventListener("change", async () => {
     if (v.roast) html += "<em>“" + escapeHtml(v.roast) + "”</em>";
     show(v.passed ? "pass" : "fail", html);
   } catch (e) {
-    show("fail", "<strong>Couldn't reach your laptop.</strong><br>Are you on the same Wi-Fi?");
+    const hint = location.protocol === "https:"
+      ? "Is <code>touchgrass prove</code> still running?"
+      : "Are you on the same Wi-Fi?";
+    show("fail", "<strong>Couldn't reach your laptop.</strong><br>" + hint);
   }
 });
 </script>

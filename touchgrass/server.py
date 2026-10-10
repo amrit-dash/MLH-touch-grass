@@ -17,6 +17,7 @@ from touchgrass import state, verify
 from touchgrass.tunnel import Tunnel
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+PASS_GRACE_SECONDS = 15
 
 Verifier = Callable[[bytes, "float | None", float], verify.Verdict]
 
@@ -41,21 +42,48 @@ def make_handler(
     verifier: Verifier,
     on_pass: Callable[[verify.Verdict], None],
     on_verdict: Callable[[verify.Verdict], None] | None = None,
+    on_delivered: Callable[[], None] | None = None,
 ):
+    """Upload returns a job id straight away and the phone polls /result.
+
+    The model can take a minute on a laptop. Holding one request open that long
+    gets it cut by proxies and tunnels (Cloudflare drops it) and by phones that
+    nap the tab. Short requests survive all of that.
+    """
     page = resources.files("touchgrass").joinpath("page.html").read_bytes()
+    jobs: dict[str, dict] = {}
+
+    def run(job_id: str, jpeg: bytes, taken_at: float | None) -> None:
+        try:
+            verdict = verifier(jpeg, taken_at, time.time() * 1000)
+        except verify.ModelError as exc:
+            jobs[job_id] = {"error": str(exc)}
+            return
+        except Exception as exc:  # never leave the phone polling forever
+            jobs[job_id] = {"error": f"Something broke on the laptop: {exc}"}
+            raise
+        if on_verdict:
+            on_verdict(verdict)
+        # Record the pass before the phone asks: even if it never does, you still went outside.
+        if verdict.passed:
+            on_pass(verdict)
+        jobs[job_id] = verdict.as_dict()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
+        def _query(self) -> dict:
+            return parse_qs(urlparse(self.path).query)
+
         def _authorized(self) -> bool:
-            query = parse_qs(urlparse(self.path).query)
-            return secrets.compare_digest(query.get("t", [""])[0], token)
+            return secrets.compare_digest(self._query().get("t", [""])[0], token)
 
         def _send(self, status: int, body: bytes, content_type: str) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
 
@@ -63,9 +91,20 @@ def make_handler(
             self._send(status, json.dumps(payload).encode(), "application/json")
 
         def do_GET(self):
-            if urlparse(self.path).path != "/" or not self._authorized():
+            path = urlparse(self.path).path
+            if not self._authorized() or path not in ("/", "/result"):
                 return self._send(404, b"not found", "text/plain")
-            self._send(200, page, "text/html; charset=utf-8")
+            if path == "/":
+                return self._send(200, page, "text/html; charset=utf-8")
+            job_id = self._query().get("job", [""])[0]
+            if job_id not in jobs:
+                return self._json(404, {"error": "Unknown photo. Try again."})
+            result = jobs[job_id]
+            if result is None:
+                return self._json(200, {"pending": True})
+            self._json(200, result)
+            if on_delivered and result.get("passed"):
+                on_delivered()
 
         def do_POST(self):
             if urlparse(self.path).path != "/upload" or not self._authorized():
@@ -77,20 +116,13 @@ def make_handler(
                 body = json.loads(self.rfile.read(length))
                 jpeg = decode_data_url(body["image"])
                 taken_at = body.get("taken_at")
-                verdict = verifier(jpeg, float(taken_at) if taken_at else None, time.time() * 1000)
-            except verify.ModelError as exc:
-                return self._json(502, {"error": str(exc)})
+                taken_at = float(taken_at) if taken_at else None
             except (KeyError, ValueError, TypeError):
                 return self._json(400, {"error": "Bad upload."})
-            if on_verdict:
-                on_verdict(verdict)
-            try:
-                self._json(200, verdict.as_dict())
-            finally:
-                # After responding, so the phone sees the result before we shut down,
-                # but even if the phone has gone away: you still went outside.
-                if verdict.passed:
-                    on_pass(verdict)
+            job_id = secrets.token_urlsafe(8)
+            jobs[job_id] = None
+            threading.Thread(target=run, args=(job_id, jpeg, taken_at), daemon=True).start()
+            self._json(202, {"job": job_id})
 
     return Handler
 
@@ -129,6 +161,8 @@ def serve(
     done = threading.Event()
     indoors = state.minutes_indoors()
 
+    delivered = threading.Event()
+
     def on_pass(verdict: verify.Verdict) -> None:
         if not passed:
             record_pass(verdict, indoors)
@@ -136,7 +170,7 @@ def serve(
         done.set()
 
     host = "127.0.0.1" if public else "0.0.0.0"
-    server = ThreadingHTTPServer((host, port), make_handler(token, verifier, on_pass, on_verdict))
+    server = ThreadingHTTPServer((host, port), make_handler(token, verifier, on_pass, on_verdict, delivered.set))
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     cloudflare = Tunnel(port) if tunnel else None
@@ -150,6 +184,9 @@ def serve(
             base = f"http://{lan_ip()}:{port}"
         on_ready(f"{base}/?t={token}")
         done.wait(timeout_minutes * 60)
+        if passed:
+            # Stay up long enough for the phone's next poll to see the good news.
+            delivered.wait(PASS_GRACE_SECONDS)
     finally:
         if cloudflare:
             cloudflare.close()

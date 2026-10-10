@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -216,7 +217,15 @@ class ServerTest(TempHome):
             url.replace("/?", "/upload?"), data=body, headers={"Content-Type": "application/json"}
         )
         with urllib.request.urlopen(req) as r:
-            response = json.loads(r.read())
+            self.assertEqual(r.status, 202)
+            job = json.loads(r.read())["job"]
+        result_url = url.replace("/?", "/result?") + "&job=" + job
+        for _ in range(50):
+            with urllib.request.urlopen(result_url) as r:
+                response = json.loads(r.read())
+            if not response.get("pending"):
+                break
+            time.sleep(0.05)
         t.join(5)
         return response, result[0]
 
@@ -230,8 +239,7 @@ class ServerTest(TempHome):
         self.assertEqual(receipt["roast"], "Wow, sunlight.")
         self.assertGreaterEqual(receipt["indoors_minutes"], 239)
 
-    def test_pass_recorded_even_if_phone_disconnects(self):
-        state.mark_grass(state.now() - timedelta(hours=4))
+    def test_pass_recorded_even_if_phone_never_asks_for_result(self):
         passed = []
         handler = server.make_handler("tok", lambda *a: verify.Verdict(True, "ok"), passed.append)
         h = handler.__new__(handler)
@@ -239,10 +247,38 @@ class ServerTest(TempHome):
         h.path = "/upload?t=tok"
         h.headers = {"Content-Length": str(len(body))}
         h.rfile = io.BytesIO(body)
-        with mock.patch.object(handler, "_json", side_effect=BrokenPipeError):
-            with self.assertRaises(BrokenPipeError):
-                h.do_POST()
+        with mock.patch.object(handler, "_json"):
+            h.do_POST()
+        for _ in range(50):
+            if passed:
+                break
+            time.sleep(0.02)
         self.assertEqual(len(passed), 1)
+
+    def test_model_error_reaches_the_phone(self):
+        def broken(*a):
+            raise verify.ModelError("Ollama returned 500: boom")
+
+        sent = []
+        handler = server.make_handler("tok", broken, lambda v: None)
+
+        def request(method, path, body=b""):
+            h = handler.__new__(handler)
+            h.path = path
+            h.headers = {"Content-Length": str(len(body))}
+            h.rfile = io.BytesIO(body)
+            with mock.patch.object(handler, "_json", side_effect=lambda status, payload: sent.append(payload)):
+                getattr(h, method)()
+            return sent[-1]
+
+        body = json.dumps({"image": "data:image/jpeg;base64,eA=="}).encode()
+        job = request("do_POST", "/upload?t=tok", body)["job"]
+        for _ in range(50):
+            result = request("do_GET", f"/result?t=tok&job={job}")
+            if not result.get("pending"):
+                break
+            time.sleep(0.02)
+        self.assertIn("boom", result["error"])
 
     def test_fail_keeps_blocked(self):
         state.mark_grass(state.now() - timedelta(hours=4))
