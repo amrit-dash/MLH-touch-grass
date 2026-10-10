@@ -96,7 +96,7 @@ Second run: **18 out of 18**, about 26 seconds a photo on a 4 core CPU with no G
 
 Then I tried it for real, with my own phone.
 
-The first real photo, outside my building:
+The first real photo:
 
 > ✅ Grass confirmed. A multi-story residential building with laundry hanging out to dry is visible under a blue sky.
 > "It looks like your deployment is stuck waiting for the laundry cycle to finish."
@@ -118,7 +118,7 @@ I retook the full-frame shot, saved it and tried 4 different screen prompts on i
 
 So that's the known hole. If you're willing to press your phone against your monitor to dodge a 2 minute walk, you win. You'll know, though.
 
-And the hillside in the demo above went through the new HTTPS tunnel, first try.
+And the hillside in the demo above went through the new HTTPS tunnel.
 
 ## Why Open Matters Here
 
