@@ -62,6 +62,32 @@ class JudgeTest(unittest.TestCase):
             verify.parse_model_output("I can't see images")
 
 
+class PipelineTest(unittest.TestCase):
+    PASS = {"outdoors": True, "sky_or_plants": True, "photo_of_screen": False, "roast": "r"}
+
+    def test_screen_double_check_vetoes_a_pass(self):
+        answers = [self.PASS, {"on_screen": True}]
+        with mock.patch.object(verify, "ask_model", side_effect=lambda *a, **k: answers.pop(0)):
+            v = verify.check(b"x")
+        self.assertFalse(v.passed)
+        self.assertEqual(v.reason, verify.SCREEN_REASON)
+
+    def test_double_check_clears_real_photo(self):
+        answers = [self.PASS, {"on_screen": False}]
+        with mock.patch.object(verify, "ask_model", side_effect=lambda *a, **k: answers.pop(0)):
+            self.assertTrue(verify.check(b"x").passed)
+
+    def test_failures_skip_double_check(self):
+        with mock.patch.object(verify, "ask_model", return_value={"outdoors": False}) as ask:
+            self.assertFalse(verify.check(b"x").passed)
+        self.assertEqual(ask.call_count, 1)
+
+    def test_stale_photo_never_reaches_model(self):
+        with mock.patch.object(verify, "ask_model") as ask:
+            self.assertFalse(verify.verify(b"x", 0, 60 * 60 * 1000).passed)
+        ask.assert_not_called()
+
+
 class CheckTest(TempHome):
     def test_first_run_does_not_block(self):
         self.assertEqual(cli.main(["check"]), 0)

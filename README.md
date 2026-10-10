@@ -47,8 +47,13 @@ touchgrass install
 ## How it decides
 
 1. **Fresh photo**: the capture time must be within the last 15 minutes. The page opens the camera directly, not the gallery.
-2. **Model check**: the photo goes to the local model with a prompt asking for JSON: `outdoors`, `sky_or_plants`, `photo_of_screen`, a description and a roast.
-3. **Verdict**: pass only if it's outdoors, shows sky or plants, and isn't a photo of a screen.
+2. **Describe**: the photo goes to the local model, which returns JSON: `photo_of_screen`, `outdoors`, `sky_or_plants`, a description and a roast.
+3. **Decide**: plain Python, not the model, makes the call. Outdoors, sky or plants, and not a screen.
+4. **Double-check passes**: anything that passed gets a second, narrower question: "is this scene on a monitor or a print?" The first prompt missed a monitor that filled the frame; this one catches it.
+
+## Benchmark
+
+`scripts/bench.py PHOTOS_DIR` runs the real pipeline over `PHOTOS_DIR/pass/*.jpg` and `PHOTOS_DIR/fail/*.jpg` and reports accuracy and time per photo. See [docs/benchmark.md](docs/benchmark.md) for results.
 
 ## Honest limits
 

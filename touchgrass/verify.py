@@ -17,13 +17,30 @@ DEFAULT_HOST = "http://localhost:11434"
 MAX_PHOTO_AGE_SECONDS = 15 * 60
 
 PROMPT = """You are the bouncer for a developer who is not allowed to push code until they go outside.
-Look at this photo and answer ONLY with a JSON object with these keys:
-- "outdoors": true if the photo was clearly taken outside (open air, not through a window)
-- "sky_or_plants": true if sky, grass, trees or other plants are visible
-- "photo_of_screen": true if this is a photo of a monitor, phone, TV or printed picture rather than a real scene
+Developers cheat by photographing a screen or a printed picture of nature, so check that first.
+
+Answer ONLY with a JSON object with these keys, in this order:
+- "screen_evidence": what you see that suggests a display, monitor, TV, phone, laptop or printed picture
+  (bezels, a frame around the scene, a stand, a keyboard, desk edges, glare, pixels, moire), or "none"
+- "photo_of_screen": true if the main scene is shown on a screen or a print, even if that scene is outdoors
+- "outdoors": true if the photographer was standing outside in the open air (not behind a window)
+- "sky_or_plants": true if real sky, grass, trees or other plants are visible
 - "description": one short sentence describing what is in the photo
-- "roast": one short, friendly, funny sentence for the developer about their outing (or their attempt to cheat)
+- "roast": one short, friendly, funny sentence for the developer that mentions something specific in
+  this photo. Don't start with "Looks like".
 """
+
+# A second, narrower question for photos that passed. Small models miss a bezel when
+# the screen fills the frame, but catch it when that's the only thing they're asked.
+SCREEN_PROMPT = """Look closely at the edges and borders of this photo.
+Is the scene being displayed on a monitor, TV, laptop, tablet, phone or printed picture that someone photographed?
+Signs: a plastic or metal bezel or frame running along the edges, a power light or logo on a frame, a stand,
+screen glare, visible pixels or moire, a sharp rectangular border around the scene.
+Answer ONLY with JSON: {"border_seen": "<what is at the edges of the photo>", "on_screen": true or false}
+"""
+
+
+SCREEN_REASON = "That's a picture of a screen. Nice try."
 
 
 class ModelError(RuntimeError):
@@ -66,15 +83,15 @@ def check_freshness(taken_at_ms: float | None, now_ms: float) -> str | None:
     return None
 
 
-def ask_model(jpeg: bytes, timeout: float = 120) -> dict:
+def ask_model(jpeg: bytes, prompt: str = PROMPT, temperature: float = 0.2, timeout: float = 300) -> dict:
     body = json.dumps(
         {
             "model": model_name(),
-            "prompt": PROMPT,
+            "prompt": prompt,
             "images": [base64.b64encode(jpeg).decode()],
             "format": "json",
             "stream": False,
-            "options": {"temperature": 0.2},
+            "options": {"temperature": temperature},
         }
     ).encode()
     request = urllib.request.Request(
@@ -113,7 +130,7 @@ def judge(answer: dict) -> Verdict:
     description = str(answer.get("description", ""))
     roast = str(answer.get("roast", ""))
     if _truthy(answer.get("photo_of_screen")):
-        reason = "That's a picture of a screen. Nice try."
+        reason = SCREEN_REASON
     elif not _truthy(answer.get("outdoors")):
         reason = "That doesn't look like outside."
     elif not _truthy(answer.get("sky_or_plants")):
@@ -127,4 +144,18 @@ def verify(jpeg: bytes, taken_at_ms: float | None, now_ms: float) -> Verdict:
     stale = check_freshness(taken_at_ms, now_ms)
     if stale:
         return Verdict(False, stale)
-    return judge(ask_model(jpeg))
+    return check(jpeg)
+
+
+def check(jpeg: bytes, timeout: float = 300) -> Verdict:
+    """The model part of verify(): describe the photo, then double-check passes for a screen."""
+    verdict = judge(ask_model(jpeg, timeout=timeout))
+    if verdict.passed and on_screen(jpeg, timeout):
+        verdict.passed = False
+        verdict.reason = SCREEN_REASON
+    return verdict
+
+
+def on_screen(jpeg: bytes, timeout: float = 300) -> bool:
+    answer = ask_model(jpeg, SCREEN_PROMPT, temperature=0, timeout=timeout)
+    return _truthy(answer.get("on_screen"))

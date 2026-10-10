@@ -43,18 +43,17 @@ def main() -> int:
         for path in sorted((args.photos / expected).glob("*.jp*g")):
             start = time.monotonic()
             try:
-                answer = verify.ask_model(as_jpeg(path), timeout=900)
-                verdict = verify.judge(answer)
+                verdict = verify.check(as_jpeg(path), timeout=900)
             except verify.ModelError as exc:
-                answer, verdict = {}, verify.Verdict(False, f"error: {exc}")
+                verdict = verify.Verdict(False, f"error: {exc}")
             seconds = time.monotonic() - start
             ok = verdict.passed == (expected == "pass")
             rows.append({
                 "photo": path.name, "expected": expected, "passed": verdict.passed, "correct": ok,
-                "seconds": round(seconds, 1), "reason": verdict.reason, "answer": answer,
+                "seconds": round(seconds, 1), "reason": verdict.reason, "roast": verdict.roast,
             })
             print(f"{'✅' if ok else '❌'} {expected:4} {path.name:32} {seconds:5.1f}s  "
-                  f"{verdict.reason}  | {answer.get('roast', '')}", flush=True)
+                  f"{verdict.reason}  | {verdict.roast}", flush=True)
 
     correct = sum(r["correct"] for r in rows)
     print(f"\n{verify.model_name()}: {correct}/{len(rows)} correct, "
