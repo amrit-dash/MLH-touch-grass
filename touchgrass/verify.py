@@ -1,6 +1,6 @@
 """Ask a local open-weight vision model whether a photo was really taken outside.
 
-Everything runs on your machine through Ollama: the photo never leaves it.
+The model runs on your machine through Ollama: no cloud model ever sees the photo.
 """
 
 from __future__ import annotations

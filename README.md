@@ -8,7 +8,7 @@ $ git push
    Run `touchgrass prove`, scan the code with your phone and take a photo outside.
 ```
 
-`touchgrass prove` serves a camera-only page on your Wi-Fi. Walk outside, take a photo, and **Gemma running on your own laptop via Ollama** decides whether it counts: is it outdoors, is there sky or plants, is it a photo of a screen? Pass, and your push is unlocked, with a grass receipt and a one-line roast. The photo never leaves your network.
+`touchgrass prove` serves a camera-only page on your Wi-Fi. Walk outside, take a photo, and **Gemma running on your own laptop via Ollama** decides whether it counts: is it outdoors, is there sky or plants, is it a photo of a screen? Pass, and your push is unlocked, with a grass receipt and a one-line roast. On your Wi-Fi the photo never leaves your network; with `--tunnel` it passes through Cloudflare, but only your laptop's model looks at it.
 
 Built for the [Hacktoberfest 2026 DEV Open-Source AI Challenge, Week 1: Touch Grass](https://dev.to/challenges/hacktoberfest-week1-2026-10-05).
 
@@ -75,7 +75,7 @@ In both modes the server only listens on `127.0.0.1` and the one-time token is 1
 
 ## Honest limits
 
-`git push --no-verify` skips any hook. The capture time is reported by your phone's browser and can be faked. This is a nudge with a sense of humour, not a prison.
+A monitor held close enough to fill the whole frame gets through (see [docs/benchmark.md](docs/benchmark.md)). `git push --no-verify` skips any hook. The capture time is reported by your phone's browser and can be faked. This is a nudge with a sense of humour, not a prison.
 
 ## Development
 

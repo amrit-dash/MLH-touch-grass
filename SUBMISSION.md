@@ -48,10 +48,10 @@ And it's tiny. You don't need a hike. You need sky or a plant in frame, taken in
 
 ## How I Built It
 
-It's about 500 lines of Python plus one HTML page, with zero required dependencies.
+It's about 700 lines of Python plus one HTML page, with zero required dependencies.
 
 1. **The hook.** `touchgrass install` writes a `pre-push` hook. It compares now against the last time a photo passed.
-2. **The phone page.** `touchgrass prove` starts a small server on your Wi-Fi with a one-time token in the URL. The page opens the rear camera directly (`capture="environment"`), shrinks the photo to 1024px and sends it with its capture time.
+2. **The phone page.** `touchgrass prove` starts a small server on your Wi-Fi with a one-time token in the URL. The page opens the rear camera directly (`capture="environment"`), shrinks the photo to 1024px and sends it with its capture time. Not on the same Wi-Fi? `touchgrass prove --tunnel` gives the page a temporary HTTPS address through a Cloudflare quick tunnel, so it works on mobile data too.
 3. **The check.** The photo goes to Gemma through Ollama, on `localhost`. The prompt asks for JSON only: `outdoors`, `sky_or_plants`, `photo_of_screen`, a one line description and a roast.
 4. **The verdict.** Plain Python decides, not the model. Outdoors, plus sky or plants, plus not a screen.
 5. **The double check.** Anything that passes gets one more question about screens (more on that below). Then the clock resets and you get a "grass receipt" (`touchgrass log`).
@@ -65,8 +65,9 @@ Obviously that was the first thing I tried.
 | Cheat | What stops it |
 |---|---|
 | Old photo from the gallery | Capture time has to be within 15 minutes |
-| Photo out the window | Prompt says "not through a window" [TODO: test this for real] |
-| Grass wallpaper on your monitor | `photo_of_screen` |
+| Photo out the window | Prompt says "not through a window" (I haven't tested this one yet) |
+| Grass wallpaper on your monitor | `photo_of_screen`, plus the bezel double check |
+| A monitor so close it fills the whole frame | Nothing, yet. Keep reading. |
 | `git push --no-verify` | Nothing. You'll know. |
 
 I also benchmarked it so I wasn't just trusting vibes. 18 labelled photos: 8 real outdoor scenes, 8 indoor rooms and desks, and 2 fakes where I pasted a field of cows onto a monitor in a desk photo.
@@ -79,19 +80,49 @@ Second run: **18 out of 18**, about 26 seconds a photo on a 4 core CPU with no G
 
 (18 photos is tiny, and I fixed the prompt after seeing the fakes fail, so read that as "known holes closed", not "perfect". Also it calls the cows horses every single time.)
 
-[TODO: your own cheat attempts with the real verdicts. These are the best part of the post.]
+Then I tried it for real, with my own phone.
+
+The first real photo, outside my building:
+
+> ✅ Grass confirmed. A multi-story residential building with laundry hanging out to dry is visible under a blue sky.
+> "It looks like your deployment is stuck waiting for the laundry cycle to finish."
+
+Fair.
+
+Then I put a photo of a grass field on my monitor and held my phone close enough that the grass filled the whole frame. No bezel, no desk.
+
+> ✅ Grass confirmed. A vibrant green field of tall grass stretches towards a line of trees under a cloudy sky.
+> "Hope your code is as lush and green as this field, or you'll be debugging in the weeds."
+
+It got me. Both checks missed it.
+
+When I tried again and a sliver of the browser bar crept into the corner, it caught me straight away:
+
+> ❌ That's a picture of a screen. Nice try.
+
+I retook the full-frame shot, saved it and tried 4 different screen prompts on it, with and without Gemma's thinking turned on. Every one said it was a real field. Once the screen fills the frame there isn't much left to see, just slightly too-green grass.
+
+So that's the known hole. If you're willing to press your phone against your monitor to dodge a 2 minute walk, you win. You'll know, though.
+
+The last one went through the new HTTPS tunnel, of an actual hillside:
+
+> ✅ Grass confirmed. A hilly landscape with scattered houses under a cloudy sky.
+> "It looks like you've found a much better environment to debug than your IDE."
+
+Push unlocked.
 
 ## Why Open Matters Here
 
 This thing looks at photos of where you are. Your street, your backyard, maybe your face.
 
-I don't want that going to someone else's API every time I push code. With an open-weight model it never leaves my laptop. It also costs nothing per check, works offline, and if you think my rules are too strict you can change the prompt or swap the model in one env var.
+I don't want that going to someone else's API every time I push code. With an open-weight model the only thing that ever looks at it is my laptop. (With `--tunnel` the photo passes through Cloudflare on the way, encrypted, but nobody else's model sees it and nothing stores it.) It also costs nothing per check, works offline, and if you think my rules are too strict you can change the prompt or swap the model in one env var.
 
 ## What's Missing
 
 - `--no-verify` skips it. It's a nudge with jokes, not a prison.
 - The capture time comes from the phone's browser, so a determined cheater can fake it.
-- Your phone and laptop need to be on the same Wi-Fi.
+- A screen held close enough to fill the whole frame gets through. I couldn't prompt my way out of that one.
+- Same Wi-Fi by default. `--tunnel` fixes that, but then the photo goes through Cloudflare.
 
 ## Prize Categories
 

@@ -44,6 +44,28 @@ The prompt now asks the model to look for a screen before anything else, and eve
 - The fakes are composites with clean edges. Real photos of screens have glare and moire, which may be easier or harder.
 - The model calls the cows "horses". It doesn't matter for the verdict.
 
+## Since then
+
+The runs above were on Ollama 0.32. Two things changed afterwards and the 18 photos haven't been re-run with them:
+
+- Requests now send `think: false`. Gemma 4 thinks by default on newer Ollama, which took 24s instead of 1s on a test image.
+- If Ollama can't do JSON mode (Homebrew's 0.40 build can't), the request is retried without `format: "json"` and the JSON is parsed out of the plain reply.
+
+## Real phone tests (Oct 10, Homebrew Ollama 0.40.2, Apple Silicon)
+
+Photos taken with my own phone through `touchgrass prove`, some over `--tunnel`.
+
+| Photo | Should | Result | Roast |
+|---|---|---|---|
+| Residential building, blue sky | pass | ✅ Grass confirmed. | It looks like your deployment is stuck waiting for the laundry cycle to finish. |
+| Hilly landscape, over `--tunnel` | pass | ✅ Grass confirmed. | It looks like you've found a much better environment to debug than your IDE. |
+| Grass on a monitor, browser bar in the corner | fail | ✅ That's a picture of a screen. Nice try. | Your commitment to nature is so strong, you're practically ready to commit to a pull request. |
+| Same monitor, grass filling the whole frame | fail | ❌ Grass confirmed. | Hope your code is as lush and green as this field, or you'll be debugging in the weeds. |
+
+The full-frame monitor shot is a known miss. On the saved photo, 4 screen-check variants (the current one and a saturation/moire prompt, each with and without thinking) all called it a real scene. Not tested yet: a photo through a closed window, an old gallery photo, a printed picture.
+
+`TOUCHGRASS_KEEP_PHOTOS=1` saves uploads to `~/.touchgrass/photos` if you want to dig into a miss.
+
 ## Reproduce
 
 ```sh

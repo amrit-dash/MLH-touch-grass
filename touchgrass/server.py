@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import secrets
 import socket
 import threading
@@ -37,6 +38,15 @@ def decode_data_url(data_url: str) -> bytes:
     return base64.b64decode(encoded or data_url)
 
 
+def keep_photo(jpeg: bytes) -> None:
+    """TOUCHGRASS_KEEP_PHOTOS=1 saves uploads to ~/.touchgrass/photos, for debugging the model. Off by default."""
+    if os.environ.get("TOUCHGRASS_KEEP_PHOTOS") != "1":
+        return
+    folder = state.home() / "photos"
+    folder.mkdir(exist_ok=True)
+    (folder / f"{state.now().strftime('%Y%m%d-%H%M%S-%f')}.jpg").write_bytes(jpeg)
+
+
 def make_handler(
     token: str,
     verifier: Verifier,
@@ -54,6 +64,7 @@ def make_handler(
     jobs: dict[str, dict] = {}
 
     def run(job_id: str, jpeg: bytes, taken_at: float | None) -> None:
+        keep_photo(jpeg)
         try:
             verdict = verifier(jpeg, taken_at, time.time() * 1000)
         except verify.ModelError as exc:

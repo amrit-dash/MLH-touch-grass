@@ -291,6 +291,16 @@ class ServerTest(TempHome):
         self.assertEqual(state.receipts(), [])
 
 
+class KeepPhotosTest(TempHome):
+    def test_photos_not_kept_by_default(self):
+        server.keep_photo(b"jpeg")
+        self.assertFalse((state.home() / "photos").exists())
+
+    def test_photos_kept_when_asked(self):
+        with mock.patch.dict(os.environ, {"TOUCHGRASS_KEEP_PHOTOS": "1"}):
+            server.keep_photo(b"jpeg")
+        self.assertEqual([p.read_bytes() for p in (state.home() / "photos").iterdir()], [b"jpeg"])
+
 class PublicUrlTest(TempHome):
     def test_public_url_listens_on_localhost_only_with_long_token(self):
         bound = []
